@@ -10,54 +10,136 @@ permissions:
 
 jobs:
   publish:
+    name: Build (${{ matrix.platform }} - ${{ matrix.name }})
+    runs-on: ${{ matrix.platform }}
+
     strategy:
       fail-fast: false
       matrix:
         include:
           - platform: macos-latest
-            args: "--target aarch64-apple-darwin"
+            name: macOS Apple Silicon
+            target: aarch64-apple-darwin
+            bundles: dmg
 
           - platform: macos-15-intel
-            args: "--target x86_64-apple-darwin"
+            name: macOS Intel
+            target: x86_64-apple-darwin
+            bundles: dmg
 
           - platform: windows-latest
-            args: "--bundles nsis"
+            name: Windows
+            target: ""
+            bundles: nsis
 
-    runs-on: ${{ matrix.platform }}
+          - platform: ubuntu-22.04
+            name: Linux
+            target: ""
+            bundles: appimage,deb
+
+    env:
+      CI: "true"
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Signierung der Tauri-Updatepakete
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      # macOS Ad-hoc-Signierung
+      APPLE_SIGNING_IDENTITY: "-"
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Install Linux prerequisites
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          targets: ${{ startsWith(matrix.platform, 'macos-') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Pi Bridge
-        run: npm run build:bridge
+      - name: Run tests
+        run: npm test
 
-      # Hier ggf. deinen bestehenden Schritt ergänzen,
-      # der die Node-Laufzeit als Sidecar bereitstellt.
+      - name: Check signing key
+        shell: bash
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY fehlt in GitHub Secrets."
+            exit 1
+          fi
 
-      - uses: tauri-apps/tauri-action@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      - name: Bundle Node runtime and build Pi Bridge
+        shell: bash
+        run: |
+          node -e "const fs=require('node:fs'); const p=require('node:path'); const dest=p.join('ai','runtime',process.platform==='win32'?'node.exe':'node');fs.mkdirSync(p.dirname(dest),{recursive:true});fs.copyFileSync(process.execPath,dest);if(process.platform!=='win32')fs.chmodSync(dest,0o755);console.log('Bundled Node runtime:', dest)"
 
+          npm run build:bridge
+          node --check ai/dist/bridge.mjs
+
+      - name: Build and publish StudyDeck
+        uses: tauri-apps/tauri-action@v1
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "StudyDeck ${{ github.ref_name }}"
-          releaseBody: "Neue StudyDeck-Version"
+          releaseBody: |
+            StudyDeck – Desktop-Anwendung für klausurorientierte Anki-Karteikarten.
+
+            Unterstützte Plattformen:
+            - macOS Apple Silicon
+            - macOS Intel
+            - Windows x64
+            - Linux
+
+            Voraussetzung: Anki Desktop mit AnkiConnect.
+
+            Hinweis: macOS-Builds sind derzeit nicht von Apple notarisiert.
+
           releaseDraft: false
           prerelease: false
+
           uploadUpdaterJson: true
           updaterJsonPreferNsis: true
-          args: ${{ matrix.args }}
+          uploadUpdaterSignatures: true
+
+          args: --bundles ${{ matrix.bundles }} ${{ matrix.target != '' && format('--target {0}', matrix.target) || '' }}
+
+      - name: Upload installer artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: studydeck-${{ matrix.platform }}-${{ matrix.name }}
+          path: |
+            src-tauri/target/**/release/bundle/**/*.dmg
+            src-tauri/target/**/release/bundle/**/*.exe
+            src-tauri/target/**/release/bundle/**/*.AppImage
+            src-tauri/target/**/release/bundle/**/*.deb
+          if-no-files-found: warn

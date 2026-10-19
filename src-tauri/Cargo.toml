@@ -1,6 +1,6 @@
 [package]
 name = "studydeck"
-version = "0.2.0"
+version = "0.2.1"
 description = "Klausurorientierte Verständnis-Karteikarten für Anki"
 authors = ["StudyDeck Contributors"]
 edition = "2021"
