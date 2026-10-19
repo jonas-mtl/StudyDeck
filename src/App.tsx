@@ -16,6 +16,7 @@ import {
   Moon,
   Cpu,
 } from "lucide-react";
+import { getVersion } from "@tauri-apps/api/app";
 import { Button, Notice } from "./components/UI";
 import { AiConnection } from "./components/AiConnection";
 import { PromptSettings } from "./components/PromptSettings";
@@ -44,6 +45,7 @@ export default function App() {
   >("connections");
   const { theme, setTheme } = useTheme();
   const [error, setError] = useState("");
+  const [appVersion, setAppVersion] = useState("");
   const [reviewContext, setReviewContext] = useState<ReviewContext | null>(
     null,
   );
@@ -63,6 +65,9 @@ export default function App() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+  useEffect(() => {
+    getVersion().then(setAppVersion).catch(console.error);
+  }, []);
   async function openModule(m: StudyModule) {
     setModuleId(m.id);
     setScreen("profile");
@@ -219,7 +224,9 @@ export default function App() {
         <footer className="app-footer">
           <span>
             StudyDeck{" "}
-            <span className="footer-muted">v0.2 · PDF-Vision & Pi OAuth</span>
+            <span className="footer-muted">
+              v{appVersion} · PDF-Vision & Pi OAuth
+            </span>
           </span>
           <span className="footer-right">
             <Sparkles size={13} /> Verständnis, das bleibt.

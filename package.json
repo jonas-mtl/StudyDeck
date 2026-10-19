@@ -1,7 +1,7 @@
 {
   "name": "studydeck",
   "private": true,
-  "version": "0.2.2",
+  "version": "0.2.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,7 +11,8 @@
     "test": "vitest run",
     "build:bridge": "esbuild ai/bridge.mjs --bundle --platform=node --target=node22 --format=esm --outfile=ai/dist/bridge.mjs",
     "tauri:dev": "npm run build:bridge && tauri dev",
-    "tauri:build": "npm run build:bridge && tauri build"
+    "tauri:build": "npm run build:bridge && tauri build",
+    "sync:version": "node scripts/sync-version.mjs && npm install --package-lock-only --ignore-scripts --no-audit --no-fund"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "^1.3.0",
