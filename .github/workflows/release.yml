@@ -1,0 +1,63 @@
+name: Release StudyDeck
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: "--target aarch64-apple-darwin"
+
+          - platform: macos-15-intel
+            args: "--target x86_64-apple-darwin"
+
+          - platform: windows-latest
+            args: "--bundles nsis"
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Pi Bridge
+        run: npm run build:bridge
+
+      # Hier ggf. deinen bestehenden Schritt ergänzen,
+      # der die Node-Laufzeit als Sidecar bereitstellt.
+
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "StudyDeck ${{ github.ref_name }}"
+          releaseBody: "Neue StudyDeck-Version"
+          releaseDraft: false
+          prerelease: false
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true
+          args: ${{ matrix.args }}

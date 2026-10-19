@@ -1,0 +1,54 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "StudyDeck",
+  "version": "0.2.0",
+  "identifier": "de.studydeck.desktop",
+  "build": {
+    "beforeDevCommand": "npm run build:bridge && npm run dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build && npm run build:bridge",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "StudyDeck",
+        "width": 1160,
+        "height": 780,
+        "minWidth": 870,
+        "minHeight": 620,
+        "backgroundColor": "#F7F8FA",
+        "theme": "Dark",
+        "titleBarStyle": "Transparent"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' data: blob: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "../ai/dist/bridge.mjs": "ai/bridge.mjs",
+      "../ai/runtime": "ai/runtime"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "requireSignedVersion": true,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVCRUMxODUzRjQ2RDFFQzUKUldURkhtMzBVeGpzNitJK2p0STRlb1N6VWZVc25XaVFObTVXeTF3U3h4ZXliTi9UdWJzWHNFaXEK%",
+      "endpoints": [
+        "https://github.com/DEINNAME/studydeck/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}
