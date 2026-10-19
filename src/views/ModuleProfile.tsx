@@ -117,6 +117,22 @@ export function ModuleProfile({
       setBusy(false);
     }
   }
+  useEffect(() => {
+    if (!showDeleteConfirm) return;
+    function closeOnEscape(event: KeyboardEvent) {
+      if (
+        event.key !== "Escape" ||
+        document.querySelector("[data-studydeck-settings='true']")
+      )
+        return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (!busy) setShowDeleteConfirm(false);
+    }
+    document.addEventListener("keydown", closeOnEscape, true);
+    return () => document.removeEventListener("keydown", closeOnEscape, true);
+  }, [showDeleteConfirm, busy]);
+
   const profile = module.profile;
   return (
     <div className="page fade-in">
@@ -300,8 +316,18 @@ export function ModuleProfile({
       </div>
       {showDeleteConfirm &&
         createPortal(
-          <div className="modal-overlay">
-            <div className="delete-dialog">
+          <div
+            className="modal-overlay"
+            data-studydeck-modal="true"
+            data-studydeck-delete="true"
+            role="presentation"
+          >
+            <div
+              className="delete-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Modul löschen"
+            >
               <h2>Modul löschen?</h2>
 
               <p>

@@ -125,22 +125,57 @@ pub fn logout(dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Liefert die von der installierten Pi-Bibliothek registrierten bildfähigen Codex-Modelle.
+/// Diese Liste garantiert keine Freischaltung für jedes ChatGPT-Konto.
+pub fn available_models(dir: &Path) -> Result<Vec<serde_json::Value>, String> {
+    let temp = dir.join("pi_jobs").join(uuid::Uuid::new_v4().to_string());
+    std::fs::create_dir_all(&temp).map_err(|e| e.to_string())?;
+    let result = (|| {
+        let output = temp.join("models.json");
+        let errors = temp.join("errors.log");
+        let log = std::fs::File::create(&errors).map_err(|e| e.to_string())?;
+        let mut child = bridge_command()?
+            .arg("models")
+            .arg(dir)
+            .arg(&output)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::from(log))
+            .spawn().map_err(|e| format!("Modellliste konnte nicht geladen werden: {e}"))?;
+        let start = Instant::now();
+        let exit = loop {
+            if let Some(exit) = child.try_wait().map_err(|e| e.to_string())? { break exit; }
+            if start.elapsed() > Duration::from_secs(15) {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("Modellliste: Zeitlimit überschritten".into());
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        };
+        if !exit.success() {
+            return Err(format!("Modellliste: {}", std::fs::read_to_string(&errors).unwrap_or_default()));
+        }
+        let raw = std::fs::read_to_string(&output).map_err(|e| e.to_string())?;
+        serde_json::from_str::<Vec<serde_json::Value>>(&raw).map_err(|e| e.to_string())
+    })();
+    let _ = std::fs::remove_dir_all(&temp);
+    result
+}
+
 pub fn run(
     dir: &Path,
     prompt: &str,
     schema: &Value,
     visuals: &[VisualPage],
+    model_id: Option<&str>,
 ) -> Result<Value, String> {
     if !connected(dir) {
         return Err(
             "Bitte zuerst in StudyDeck mit ChatGPT anmelden. Ein API-Key ist nicht nötig.".into(),
         );
     }
-    if visuals.len() > 30 {
-        return Err(
-            "Maximal dreißig Seiten pro KI-Auftrag. Große PDFs werden abschnittsweise verarbeitet."
-                .into(),
-        );
+    if visuals.len() > crate::db::MAX_PAGES_PER_REQUEST {
+        return Err(format!("Ein KI-Auftrag darf höchstens {} PDF-Seiten enthalten.", crate::db::MAX_PAGES_PER_REQUEST));
     }
     for visual in visuals {
         if visual.page < 1
@@ -161,7 +196,7 @@ pub fn run(
         let output = job_dir.join("output.json");
         let errors = job_dir.join("errors.log");
         let body =
-            serde_json::json!({"prompt":prompt,"schema":schema,"visuals":visuals,"outFile":output});
+            serde_json::json!({"prompt":prompt,"schema":schema,"visuals":visuals,"modelId":model_id,"outFile":output});
         std::fs::write(
             &input,
             serde_json::to_vec(&body).map_err(|e| e.to_string())?,

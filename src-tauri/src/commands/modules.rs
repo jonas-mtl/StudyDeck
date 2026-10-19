@@ -107,7 +107,7 @@ pub async fn generate_profile(
     module_id: String,
     visual_documents: Vec<pi::DocumentVisuals>,
 ) -> Result<Module, String> {
-    let (module, exams) = {
+    let (module, exams, overrides, ai_settings) = {
         let db = state.db.lock().map_err(|e| e.to_string())?;
         let module = db::module(&db, &module_id)?;
         let mut exams = vec![];
@@ -118,7 +118,7 @@ pub async fn generate_profile(
             let (_, _, pages) = db::document_data(&db, &d.id)?;
             exams.push((d.id, d.name, pages));
         }
-        (module, exams)
+        (module, exams, db::prompt_overrides(&db)?, db::ai_settings(&db)?)
     };
     let dir = state.data_dir.clone();
     let mut summaries = vec![];
@@ -141,7 +141,7 @@ pub async fn generate_profile(
                 "Altklausur '{name}' wurde nicht vollständig visuell geladen"
             ));
         }
-        for chunk in pages.chunks(30) {
+        for chunk in pages.chunks(ai_settings.max_pages_per_request) {
             let included = chunk
                 .iter()
                 .map(|p| p.page)
@@ -153,14 +153,16 @@ pub async fn generate_profile(
                 .cloned()
                 .collect::<Vec<_>>();
             let prompt = prompts::profile_prompt(
+                &overrides,
                 &module.name,
                 &module.semester,
                 &[(name.clone(), chunk.to_vec())],
             );
-            let schema = prompts::profile_schema();
+            let schema = prompts::profile_schema(&overrides);
             let dir = dir.clone();
+            let model_id = ai_settings.model_id.clone();
             let result = tauri::async_runtime::spawn_blocking(move || {
-                pi::run(&dir, &prompt, &schema, &images)
+                pi::run(&dir, &prompt, &schema, &images, model_id.as_deref())
             })
             .await
             .map_err(|e| e.to_string())??;
@@ -171,13 +173,13 @@ pub async fn generate_profile(
         summaries.remove(0)
     } else {
         let prompt = if exams.is_empty() {
-            prompts::profile_prompt(&module.name, &module.semester, &[])
+            prompts::profile_prompt(&overrides, &module.name, &module.semester, &[])
         } else {
-            prompts::profile_merge_prompt(&module.name, &module.semester, &summaries)
+            prompts::profile_merge_prompt(&overrides, &module.name, &module.semester, &summaries)
         };
-        let schema = prompts::profile_schema();
+        let schema = prompts::profile_schema(&overrides);
         let dir = state.data_dir.clone();
-        tauri::async_runtime::spawn_blocking(move || pi::run(&dir, &prompt, &schema, &[]))
+        tauri::async_runtime::spawn_blocking(move || pi::run(&dir, &prompt, &schema, &[], ai_settings.model_id.as_deref()))
             .await
             .map_err(|e| e.to_string())??
     };
@@ -206,7 +208,7 @@ pub async fn audit_coverage(
     module_id: String,
     visual_documents: Vec<pi::DocumentVisuals>,
 ) -> Result<serde_json::Value, String> {
-    let (m, docs, cards) = {
+    let (m, docs, cards, overrides, ai_settings) = {
         let db = state.db.lock().map_err(|e| e.to_string())?;
         let m = db::module(&db, &module_id)?;
         let mut docs = vec![];
@@ -217,7 +219,7 @@ pub async fn audit_coverage(
             let (_, _, pages) = db::document_data(&db, &d.id)?;
             docs.push((d.id, d.name, pages));
         }
-        (m, docs, db::cards(&db, &module_id)?)
+        (m, docs, db::cards(&db, &module_id)?, db::prompt_overrides(&db)?, db::ai_settings(&db)?)
     };
     if docs.is_empty() {
         return Err("Bitte zuerst Vorlesungsfolien hochladen".into());
@@ -245,7 +247,7 @@ pub async fn audit_coverage(
         if expected != actual || supplied.pages.len() != pages.len() {
             return Err(format!("Visuelle Seiten von '{name}' unvollständig"));
         }
-        for chunk in pages.chunks(30) {
+        for chunk in pages.chunks(ai_settings.max_pages_per_request) {
             let set = chunk
                 .iter()
                 .map(|p| p.page)
@@ -257,16 +259,18 @@ pub async fn audit_coverage(
                 .cloned()
                 .collect::<Vec<_>>();
             let prompt = prompts::coverage_prompt(
+                &overrides,
                 &m.name,
                 m.profile.as_ref(),
                 &[(name.clone(), chunk.to_vec())],
                 &cards,
                 &existing,
             );
-            let schema = prompts::coverage_schema();
+            let schema = prompts::coverage_schema(&overrides);
             let dir = state.data_dir.clone();
+            let model_id = ai_settings.model_id.clone();
             let result = tauri::async_runtime::spawn_blocking(move || {
-                pi::run(&dir, &prompt, &schema, &images)
+                pi::run(&dir, &prompt, &schema, &images, model_id.as_deref())
             })
             .await
             .map_err(|e| e.to_string())??;
@@ -276,10 +280,10 @@ pub async fn audit_coverage(
     if parts.len() == 1 {
         return Ok(parts.remove(0));
     }
-    let prompt=format!("{}\nFasse diese visuell geprüften TEIL-ABDECKUNGSBERICHTE zu einer moduleinheitlichen, konservativen Gesamtbewertung zusammen. Kein Thema erfinden.\n{}",prompts::POLICY,parts.iter().map(|p|p.to_string()).collect::<Vec<_>>().join("\n"));
-    let schema = prompts::coverage_schema();
+    let prompt = prompts::coverage_merge_prompt(&overrides, &parts);
+    let schema = prompts::coverage_schema(&overrides);
     let dir = state.data_dir.clone();
-    tauri::async_runtime::spawn_blocking(move || pi::run(&dir, &prompt, &schema, &[]))
+    tauri::async_runtime::spawn_blocking(move || pi::run(&dir, &prompt, &schema, &[], ai_settings.model_id.as_deref()))
         .await
         .map_err(|e| e.to_string())?
 }

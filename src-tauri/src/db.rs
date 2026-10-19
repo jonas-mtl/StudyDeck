@@ -1,6 +1,7 @@
 //! Local SQLite persistence. No cloud sync of module data; Anki sync remains Anki's responsibility.
 use crate::models::{Card, CardPatch, Document, Module, PageText};
 use rusqlite::{params, Connection, OptionalExtension};
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 pub struct AppState {
@@ -16,6 +17,8 @@ pub fn open(data_dir: PathBuf) -> Result<AppState, String> {
         CREATE TABLE IF NOT EXISTS documents (id TEXT PRIMARY KEY, module_id TEXT NOT NULL REFERENCES modules(id), name TEXT NOT NULL, kind TEXT NOT NULL, pages_json TEXT NOT NULL, local_path TEXT NOT NULL, created_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS batches (id TEXT PRIMARY KEY, module_id TEXT NOT NULL REFERENCES modules(id), document_id TEXT REFERENCES documents(id), from_page INTEGER, to_page INTEGER, hints TEXT, created_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, module_id TEXT NOT NULL REFERENCES modules(id), batch_id TEXT REFERENCES batches(id), front TEXT NOT NULL, back TEXT NOT NULL, explanation TEXT NOT NULL DEFAULT '', source_page INTEGER, image_page INTEGER, image_data TEXT, tags_json TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL DEFAULT 'draft', anki_note_id INTEGER, created_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS prompt_overrides (id TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         CREATE INDEX IF NOT EXISTS idx_cards_module ON cards(module_id, status);
         CREATE INDEX IF NOT EXISTS idx_documents_module ON documents(module_id,kind);
     ").map_err(|e| e.to_string())?;
@@ -23,6 +26,48 @@ pub fn open(data_dir: PathBuf) -> Result<AppState, String> {
         db: std::sync::Mutex::new(conn),
         data_dir,
     })
+}
+
+/// Globale KI-Einstellungen; ältere Datenbanken erhalten automatisch die Standardwerte.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiSettings {
+    pub max_pages_per_request: usize,
+    pub model_id: Option<String>,
+}
+
+impl Default for AiSettings {
+    fn default() -> Self {
+        Self { max_pages_per_request: 30, model_id: None }
+    }
+}
+
+pub const MAX_PAGES_PER_REQUEST: usize = 60;
+
+pub fn ai_settings(db: &Connection) -> Result<AiSettings, String> {
+    let saved: Option<String> = db.query_row(
+        "SELECT value FROM app_settings WHERE key='ai_settings'",
+        [], |row| row.get(0),
+    ).optional().map_err(|e| e.to_string())?;
+    let settings = saved
+        .and_then(|value| serde_json::from_str::<AiSettings>(&value).ok())
+        .filter(|s| (1..=MAX_PAGES_PER_REQUEST).contains(&s.max_pages_per_request))
+        .unwrap_or_default();
+    Ok(settings)
+}
+
+pub fn save_ai_settings(db: &Connection, settings: &AiSettings) -> Result<(), String> {
+    if !(1..=MAX_PAGES_PER_REQUEST).contains(&settings.max_pages_per_request) {
+        return Err(format!("Seiten pro KI-Auftrag müssen zwischen 1 und {MAX_PAGES_PER_REQUEST} liegen."));
+    }
+    if let Some(id) = &settings.model_id {
+        if id.len() > 100 || id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.')) {
+            return Err("Ungültige Modell-ID".into());
+        }
+    }
+    let value = serde_json::to_string(settings).map_err(|e| e.to_string())?;
+    db.execute("INSERT INTO app_settings (key, value) VALUES ('ai_settings', ?1) ON CONFLICT(key) DO UPDATE SET value=excluded.value", [value]).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 pub fn now() -> String {
@@ -287,4 +332,22 @@ pub fn delete_module(db: &mut Connection, id: &str) -> Result<Vec<String>, Strin
         .map_err(|e| e.to_string())?;
     transaction.commit().map_err(|e| e.to_string())?;
     Ok(paths)
+}
+
+
+/// Locally saved global prompt settings, independent of modules or Anki.
+pub fn prompt_overrides(db: &Connection) -> Result<crate::services::prompts::PromptOverrides, String> {
+    let mut stmt = db.prepare("SELECT id, value FROM prompt_overrides").map_err(|e|e.to_string())?;
+    let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+        .map_err(|e|e.to_string())?;
+    rows.collect::<Result<_,_>>().map_err(|e|e.to_string())
+}
+pub fn save_prompt_override(db: &Connection, id: &str, value: &str) -> Result<(), String> {
+    db.execute("INSERT INTO prompt_overrides (id, value, updated_at) VALUES (?1, ?2, ?3) ON CONFLICT(id) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+        params![id, value, now()]).map_err(|e|e.to_string())?;
+    Ok(())
+}
+pub fn reset_prompt_override(db: &Connection, id: &str) -> Result<(), String> {
+    db.execute("DELETE FROM prompt_overrides WHERE id=?1", [id]).map_err(|e|e.to_string())?;
+    Ok(())
 }

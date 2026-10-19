@@ -101,8 +101,21 @@ Technische Details: [Pi OAuth & PDF Vision](docs/PI_OAUTH_AND_VISION.md).
 Dieses Repository ist eine **Preview-Implementierung**, nicht als fertig
 validiertes Endnutzerprodukt auszugeben.
 
-
 ### Module löschen, Anki-Stapel und Quellen
+
 - **Modul löschen:** Im Modulprofil „Modul löschen“ auswählen und bestätigen. Entfernt nur lokale StudyDeck-Daten sowie lokal gespeicherte PDFs. Importierte Anki-Karten und Anki-Stapel werden nicht angefasst.
 - **Anki-Ziel:** Ein eigener Stapel pro Modul unter `Semester::Modulname` (Anki-Hierarchie). Falls Karten früher in einem falschen Stapel gelandet sind, bleiben sie dort und müssen in Anki verschoben werden.
 - **Quellangabe:** Für generierte Karten wird der ursprüngliche PDF-Dateiname mit der Foliennummer angezeigt und beim Anki-Import auf der Rückseite als Quelle vermerkt. Bereits importierte Karten ändern sich nicht rückwirkend. Manuelle Karten ohne Vorlesungsbezug haben keine PDF-Quelle.
+
+### Anpassbare KI-Prompts
+
+Unter **Einstellungen → KI-Prompts** können alle KI-Anweisungen für Modulprofil,
+Karteikarten, Überarbeitung und Themenabdeckung sowie die JSON-Antwortschemata
+bearbeitet werden. Änderungen liegen lokal in SQLite und gelten ab der nächsten
+KI-Anfrage. Die Standard-Prompts aus `src-tauri/src/services/prompts.rs`
+bleiben erhalten und können einzeln wiederhergestellt werden.
+Siehe [Prompt-Editor](docs/PROMPT_EDITOR.md).
+
+### Individuelle KI- und Darstellungseinstellungen
+
+Unter **Einstellungen → Modell & Seiten** lassen sich die bildfähigen Codex-Modelle aus der Pi-Modellliste wählen und die Anzahl der PDF-Seiten **pro KI-Anfrage** einstellen (1–60, Standard 30). Änderungen wirken bei Karten, Modulprofilen und Abdeckungsanalysen. Unter **Einstellungen → Darstellung** stehen System-, Hell- und Dark Mode zur Wahl. Escape schließt zuerst Dialoge und Editor-Teilansichten und navigiert anschließend zurück. Details: [docs/AI_AND_APPEARANCE_SETTINGS.md](docs/AI_AND_APPEARANCE_SETTINGS.md).

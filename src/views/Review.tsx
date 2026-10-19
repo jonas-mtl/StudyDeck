@@ -49,6 +49,24 @@ export function Review({
       .catch((e) => setError(errorMessage(e)))
       .finally(() => setLoading(false));
   }, [module.id]);
+  useEffect(() => {
+    if (addMode === "none") return;
+    function escapeAdd(event: KeyboardEvent) {
+      if (
+        event.key !== "Escape" ||
+        document.querySelector(
+          "[data-studydeck-settings='true'], [data-studydeck-modal='true'], [data-card-active='true']",
+        )
+      )
+        return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (!working) setAddMode("none");
+    }
+    document.addEventListener("keydown", escapeAdd, true);
+    return () => document.removeEventListener("keydown", escapeAdd, true);
+  }, [addMode, working]);
+
   const drafts = useMemo(
     () => cards.filter((c) => c.status === "draft"),
     [cards],
@@ -145,7 +163,7 @@ export function Review({
   }
   return (
     <div className="page review-page fade-in">
-      <Back onClick={onBack} />
+      <Back onClick={onBack} label="Zur Kartenerstellung" />
       <div className="review-heading">
         <div>
           <span className="eyebrow">
@@ -225,7 +243,10 @@ export function Review({
           ))}
         </div>
       )}
-      <div className="add-panel">
+      <div
+        className="add-panel"
+        data-review-add-open={addMode !== "none" ? "true" : undefined}
+      >
         <div className="add-actions">
           <button
             onClick={() => setAddMode(addMode === "manual" ? "none" : "manual")}

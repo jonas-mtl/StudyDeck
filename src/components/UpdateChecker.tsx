@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 
@@ -50,10 +51,28 @@ export default function UpdateChecker() {
     }
   }
 
+  useEffect(() => {
+    if (!update) return;
+    function escapeUpdate(event: KeyboardEvent) {
+      if (
+        event.key !== "Escape" ||
+        document.querySelector(
+          "[data-studydeck-settings='true'], [data-studydeck-delete='true']",
+        )
+      )
+        return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (!installing) setUpdate(null);
+    }
+    document.addEventListener("keydown", escapeUpdate, true);
+    return () => document.removeEventListener("keydown", escapeUpdate, true);
+  }, [update, installing]);
+
   if (!update) return null;
 
-  return (
-    <div className="modal-overlay">
+  return createPortal(
+    <div className="modal-overlay" data-studydeck-modal="true">
       <div className="delete-dialog">
         <h2>Update verfügbar</h2>
 
@@ -85,6 +104,7 @@ export default function UpdateChecker() {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

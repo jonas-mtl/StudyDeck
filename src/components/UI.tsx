@@ -26,10 +26,16 @@ export function Button({
     </button>
   );
 }
-export function Back({ onClick }: { onClick: () => void }) {
+export function Back({
+  onClick,
+  label = "Übersicht",
+}: {
+  onClick: () => void;
+  label?: string;
+}) {
   return (
     <button type="button" className="back" onClick={onClick}>
-      <ArrowLeft size={17} /> Übersicht
+      <ArrowLeft size={17} /> {label}
     </button>
   );
 }

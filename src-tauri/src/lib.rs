@@ -20,6 +20,12 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::settings::get_ai_settings,
+            commands::settings::save_ai_settings,
+            commands::settings::list_ai_models,
+            commands::prompts::list_prompts,
+            commands::prompts::save_prompt,
+            commands::prompts::reset_prompt,
             commands::system::connection_status,
             commands::system::begin_ai_login,
             commands::system::ai_login_state,

@@ -109,13 +109,15 @@ async function login() {
   }
 }
 
-function modelForVision() {
-  // Nur bildfähige Codex-Modelle
-  const available = getModels("openai-codex").filter((m) =>
-    m.input?.includes("image"),
-  );
+function availableVisionModels() {
+  return getModels("openai-codex").filter((m) => m.input?.includes("image"));
+}
 
-  const requested = process.env.STUDYDECK_PI_MODEL;
+function modelForVision(requestedModel) {
+  // Nur bildfähige Codex-Modelle
+  const available = availableVisionModels();
+
+  const requested = requestedModel || process.env.STUDYDECK_PI_MODEL;
 
   // Sinnvolle Reihenfolge: erst die 5.6-Modelle, dann 6er
   const preferred = [
@@ -157,11 +159,11 @@ function modelForVision() {
   return selected;
 }
 
-if (!["login", "run"].includes(command)) {
-  console.error("Aufruf: bridge.mjs login <appDir> | run <appDir> <job.json>");
+if (!["login", "run", "models"].includes(command)) {
+  console.error("Aufruf: bridge.mjs login <appDir> | run <appDir> <job.json> | models <appDir> <out.json>");
   process.exitCode = 1;
 } else {
-  await (command === "login" ? login() : run()).catch((error) => {
+  await (command === "login" ? login() : command === "models" ? listModels() : run()).catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   });
@@ -202,6 +204,11 @@ function repairInvalidJsonEscapes(jsonText) {
   return result;
 }
 
+async function listModels() {
+  if (!jobFile) throw new Error("Dateipfad für Modellliste fehlt");
+  await atomicJson(jobFile, availableVisionModels().map(m => ({ id: m.id, name: m.name || m.id })));
+}
+
 async function run() {
   // 1. Auftrag laden
   const request = await readJson(jobFile, null);
@@ -220,7 +227,7 @@ async function run() {
   }
 
   // 3. Modell auswählen
-  const model = modelForVision();
+  const model = modelForVision(request.modelId);
 
   debug(`[StudyDeck] 4: Modell: ${model.id}`);
 

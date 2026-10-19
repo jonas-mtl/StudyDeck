@@ -82,3 +82,27 @@ export interface Coverage {
   missing: string[];
   uncertain: string[];
 }
+
+/** Ein bearbeitbarer KI-Prompt aus der lokalen SQLite-Einstellung. */
+export interface PromptEntry {
+  id: string;
+  title: string;
+  description: string;
+  group: string;
+  kind: "text" | "template" | "json";
+  placeholders: string[];
+  defaultValue: string;
+  value: string;
+  customized: boolean;
+}
+
+/** Lokal gespeicherte KI-Ausführungseinstellungen. */
+export interface AiSettings {
+  maxPagesPerRequest: number;
+  modelId: string | null;
+}
+
+export interface AiModel {
+  id: string;
+  name: string;
+}

@@ -8,6 +8,8 @@
     "core:window:allow-set-theme",
     "updater:default",
     "process:allow-restart",
-    "process:default"
+    "process:default",
+    "core:window:allow-set-background-color",
+    "core:webview:allow-set-webview-background-color"
   ]
 }

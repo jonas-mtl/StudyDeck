@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Check,
   CheckCircle2,
@@ -49,6 +49,29 @@ export function CardEditor({
     card.imagePage || card.sourcePage || 1,
   );
   const [error, setError] = useState("");
+  useEffect(() => {
+    if (!editing && !showAi) return;
+    function closeInlineEditor(event: KeyboardEvent) {
+      if (
+        event.key !== "Escape" ||
+        document.querySelector(
+          "[data-studydeck-settings='true'], [data-studydeck-modal='true']",
+        )
+      )
+        return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (!working && !rewriting) {
+        if (showAi) {
+          setShowAi(false);
+          setProposal(null);
+        } else setEditing(false);
+      }
+    }
+    document.addEventListener("keydown", closeInlineEditor, true);
+    return () =>
+      document.removeEventListener("keydown", closeInlineEditor, true);
+  }, [editing, showAi, working, rewriting]);
   const readonly = card.status !== "draft";
   async function save() {
     setWorking(true);
@@ -122,7 +145,10 @@ export function CardEditor({
     }
   }
   return (
-    <article className={`card-editor ${selected ? "is-selected" : ""}`}>
+    <article
+      className={`card-editor ${selected ? "is-selected" : ""}`}
+      data-card-active={editing || showAi ? "true" : undefined}
+    >
       <div className="card-toolbar">
         <div className="card-ident">
           <input

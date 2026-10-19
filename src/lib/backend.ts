@@ -2,8 +2,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   Card,
+  AiSettings,
+  AiModel,
   CardPatch,
   ConnectionStatus,
+  PromptEntry,
   Coverage,
   ImportResult,
   AiLoginState,
@@ -17,6 +20,13 @@ const call = <T>(command: string, args: Record<string, unknown> = {}) =>
   invoke<T>(command, args);
 export const backend = {
   status: () => call<ConnectionStatus>("connection_status"),
+  aiSettings: () => call<AiSettings>("get_ai_settings"),
+  aiModels: () => call<AiModel[]>("list_ai_models"),
+  saveAiSettings: (maxPagesPerRequest: number, modelId: string | null) =>
+    call<AiSettings>("save_ai_settings", { maxPagesPerRequest, modelId }),
+  prompts: () => call<PromptEntry[]>("list_prompts"),
+  savePrompt: (id: string, value: string) => call<PromptEntry>("save_prompt", { id, value }),
+  resetPrompt: (id: string) => call<PromptEntry>("reset_prompt", { id }),
   aiLoginState: () => call<AiLoginState>("ai_login_state"),
   beginAiLogin: () => call<void>("begin_ai_login"),
   submitAiCode: (code: string) => call<void>("submit_ai_auth_code", { code }),

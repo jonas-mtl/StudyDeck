@@ -76,7 +76,7 @@ async fn generate_impl(
     if from_page < 1 || to_page < from_page {
         return Err("Ungültiger Folienbereich".into());
     }
-    let (module, pages, previous, document_name) = {
+    let (module, pages, previous, document_name, overrides, ai_settings) = {
         let db = state.db.lock().map_err(|e| e.to_string())?;
         let m = db::module(&db, &module_id)?;
         let (owner, _, all_pages) = db::document_data(&db, &document_id)?;
@@ -95,7 +95,7 @@ async fn generate_impl(
         if pages.is_empty() {
             return Err("Im angegebenen Bereich liegen keine PDF-Seiten".into());
         }
-        (m, pages, db::cards(&db, &module_id)?, doc_name)
+        (m, pages, db::cards(&db, &module_id)?, doc_name, db::prompt_overrides(&db)?, db::ai_settings(&db)?)
     };
     // The user explicitly requested the current Anki cards as context. Never silently omit that check.
     let deck = anki::deck_name(&module.semester, &module.name);
@@ -120,7 +120,7 @@ async fn generate_impl(
     let mut accepted: Vec<Card> = vec![];
     let mut context_cards = previous.clone();
     let directory = state.data_dir.clone();
-    for chunk in pages.chunks(30) {
+    for chunk in pages.chunks(ai_settings.max_pages_per_request) {
         let chunk_set = chunk
             .iter()
             .map(|p| p.page)
@@ -131,6 +131,7 @@ async fn generate_impl(
             .cloned()
             .collect::<Vec<_>>();
         let prompt = prompts::cards_prompt(
+            &overrides,
             &module.name,
             module.profile.as_ref(),
             chunk,
@@ -139,10 +140,11 @@ async fn generate_impl(
             &hints,
             extra,
         );
-        let schema = prompts::cards_schema();
+        let schema = prompts::cards_schema(&overrides);
         let dir = directory.clone();
+        let model_id = ai_settings.model_id.clone();
         let response =
-            tauri::async_runtime::spawn_blocking(move || pi::run(&dir, &prompt, &schema, &images))
+            tauri::async_runtime::spawn_blocking(move || pi::run(&dir, &prompt, &schema, &images, model_id.as_deref()))
                 .await
                 .map_err(|e| e.to_string())??;
         let proposed: Vec<SuggestedCard> = serde_json::from_value(
@@ -269,19 +271,20 @@ pub async fn rewrite_card(
     if instruction.trim().is_empty() {
         return Err("Bitte eine Umformulierungsanweisung eingeben".into());
     }
-    let (card, prev) = {
+    let (card, prev, overrides, ai_settings) = {
         let db = state.db.lock().map_err(|e| e.to_string())?;
         let c = db::card(&db, &card_id)?;
         if c.status != "draft" {
             return Err("Nur Entwürfe können umformuliert werden".into());
         }
         let p = db::cards(&db, &c.module_id)?;
-        (c, p)
+        (c, p, db::prompt_overrides(&db)?, db::ai_settings(&db)?)
     };
-    let prompt = prompts::rewrite_prompt(&card, &instruction, &prev);
+    let prompt = prompts::rewrite_prompt(&overrides, &card, &instruction, &prev);
     let dir = state.data_dir.clone();
+    let schema = prompts::rewrite_schema(&overrides);
     tauri::async_runtime::spawn_blocking(move || {
-        pi::run(&dir, &prompt, &prompts::rewrite_schema(), &[])
+        pi::run(&dir, &prompt, &schema, &[], ai_settings.model_id.as_deref())
     })
     .await
     .map_err(|e| e.to_string())?
