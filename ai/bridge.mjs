@@ -160,10 +160,14 @@ function modelForVision(requestedModel) {
 }
 
 if (!["login", "run", "models"].includes(command)) {
-  console.error("Aufruf: bridge.mjs login <appDir> | run <appDir> <job.json> | models <appDir> <out.json>");
+  console.error(
+    "Aufruf: bridge.mjs login <appDir> | run <appDir> <job.json> | models <appDir> <out.json>",
+  );
   process.exitCode = 1;
 } else {
-  await (command === "login" ? login() : command === "models" ? listModels() : run()).catch((error) => {
+  await (
+    command === "login" ? login() : command === "models" ? listModels() : run()
+  ).catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   });
@@ -206,7 +210,10 @@ function repairInvalidJsonEscapes(jsonText) {
 
 async function listModels() {
   if (!jobFile) throw new Error("Dateipfad für Modellliste fehlt");
-  await atomicJson(jobFile, availableVisionModels().map(m => ({ id: m.id, name: m.name || m.id })));
+  await atomicJson(
+    jobFile,
+    availableVisionModels().map((m) => ({ id: m.id, name: m.name || m.id })),
+  );
 }
 
 async function run() {
@@ -228,8 +235,6 @@ async function run() {
 
   // 3. Modell auswählen
   const model = modelForVision(request.modelId);
-
-  debug(`[StudyDeck] 4: Modell: ${model.id}`);
 
   // 4. Anfrage vorbereiten
   const content = [
